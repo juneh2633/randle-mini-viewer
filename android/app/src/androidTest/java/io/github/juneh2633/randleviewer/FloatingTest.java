@@ -127,6 +127,9 @@ public class FloatingTest {
             Thread.sleep(600); assertEquals("1", evaluate("window.confirms")); assertEquals("1", evaluate("window.starts"));
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "작게").performClick());
             waitFor(() -> FloatingService.instance.window.getWidth() <= originalWidth[0]);
+            // Window resizing and IME hiding finish after the layout callback.
+            // Capture the composed compact window rather than the previous frame.
+            Thread.sleep(600);
             shell("screencap -p /data/local/tmp/randle-floating-smoke.png");
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "앱").performClick());
             waitFor(() -> !FloatingService.isRunning() && original.getParent() != null && find(activity.getWindow().getDecorView(), WebView.class, null) == original);
