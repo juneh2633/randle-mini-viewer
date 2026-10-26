@@ -86,7 +86,7 @@ public class FloatingTest {
             instrumentation.runOnMainSync(() -> button(activity.getWindow().getDecorView(), "작은 창").performClick());
             waitFor(() -> FloatingService.isRunning() && FloatingService.instance.window != null && FloatingService.instance.window.isAttachedToWindow());
             assertSame(original, FloatingService.instance.web);
-            waitFor(() -> button(FloatingService.instance.window, "3").isSelected());
+            waitFor(() -> { Button digit = button(FloatingService.instance.window, "3"); return digit != null && digit.isSelected(); });
             assertEquals("\"keep\"", evaluate("document.getElementById('answer').value"));
             int[] originalWidth = new int[1];
             instrumentation.runOnMainSync(() -> {
