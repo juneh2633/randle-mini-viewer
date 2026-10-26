@@ -4,7 +4,7 @@
 
 미니 창에서 자리를 선택하고 리롤·확정·다음 판을 직접 누를 수 있습니다. 자동으로 게임을 반복하는 기능은 없습니다.
 
-Android용 PiP 앱도 시험판으로 제공합니다. [Android APK 다운로드](https://github.com/juneh2633/randle-mini-viewer/releases/tag/android-v0.1.0) · [설치·사용 안내](android/README.md). PC용 확장 프로그램과 별도 앱으로 설치됩니다.
+Android용 작은 창 앱도 시험판으로 제공합니다. 창 안에서 숫자 선택·리롤·확정·다음 판과 웹 화면을 직접 조작할 수 있습니다. [Android APK 다운로드](https://github.com/juneh2633/randle-mini-viewer/releases/tag/android-v0.2.0) · [설치·사용 안내](android/README.md). PC용 확장 프로그램과 별도 앱으로 설치됩니다.
 
 ## 다운로드 및 설치
 
