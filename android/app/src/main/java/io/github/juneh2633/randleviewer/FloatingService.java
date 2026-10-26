@@ -121,12 +121,12 @@ public final class FloatingService extends Service {
             web = WindowSession.take(uiContext); if (web == null) web = WindowSession.create(uiContext);
             buildWindow(); configurePage();
             Rect bounds = bounds();
-            layout = new WindowManager.LayoutParams(Math.min(dp(260), bounds.width() - dp(16)), Math.min(dp(240), bounds.height() - dp(80)),
+            layout = new WindowManager.LayoutParams(Math.min(dp(260), bounds.width() - dp(16)), Math.min(dp(220), bounds.height() - dp(80)),
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
             layout.gravity = Gravity.TOP | Gravity.START; layout.x = dp(8); layout.y = dp(48);
             layout.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
-            manager.addView(window, layout); web.onResume();
+            manager.addView(window, layout); hideKeyboard(); web.onResume();
             if (web.getUrl() == null) web.loadUrl("https://randle.lixx.kr/play");
             handler.post(poll);
         } catch (Exception error) {
@@ -227,10 +227,15 @@ public final class FloatingService extends Service {
     private void toggleSize() {
         expanded = !expanded; Rect bounds = bounds(); layout.x = dp(8); layout.y = dp(32);
         layout.width = expanded ? bounds.width() - dp(16) : dp(260);
-        layout.height = expanded ? bounds.height() - dp(64) : dp(240);
+        layout.height = expanded ? bounds.height() - dp(64) : dp(220);
+        if (!expanded) hideKeyboard();
         pageFrame.setLayoutParams(expanded ? new LinearLayout.LayoutParams(-1, 0, 1) : new LinearLayout.LayoutParams(-1, dp(1)));
         web.setLayoutParams(new FrameLayout.LayoutParams(-1, expanded ? -1 : dp(360)));
         size.setText(expanded ? "작게" : "크게"); clamp(); applyLayout();
+    }
+    private void hideKeyboard() {
+        web.clearFocus();
+        uiContext.getSystemService(android.view.inputmethod.InputMethodManager.class).hideSoftInputFromWindow(web.getWindowToken(), 0);
     }
     @SuppressLint("SetJavaScriptEnabled")
     private void configurePage() {

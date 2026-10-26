@@ -92,7 +92,7 @@ public class FloatingTest {
             instrumentation.runOnMainSync(() -> {
                 float density = activity.getResources().getDisplayMetrics().density;
                 assertTrue(FloatingService.instance.window.getWidth() / density <= 261);
-                assertTrue(FloatingService.instance.window.getHeight() / density <= 241);
+                assertTrue(FloatingService.instance.window.getHeight() / density <= 221);
                 assertTrue(button(FloatingService.instance.window, "이 숫자로 확정").getHeight() / density <= 31);
             });
             instrumentation.runOnMainSync(() -> { originalWidth[0] = FloatingService.instance.window.getWidth(); button(FloatingService.instance.window, "크게").performClick(); });
