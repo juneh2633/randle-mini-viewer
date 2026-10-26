@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
     <application android:label="랜들 미니 뷰어" android:theme="@android:style/Theme.Material.NoActionBar"
         android:icon="@drawable/ic_app" android:allowBackup="false" android:usesCleartextTraffic="false"
         android:supportsRtl="true">
+        <service android:name=".FloatingService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started interactive floating browser window; stops when closed." />
+        </service>
         <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true"
             android:supportsPictureInPicture="true" android:launchMode="singleTask"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden">

@@ -19,6 +19,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Rational;
 import android.view.Gravity;
 import android.view.View;
@@ -57,12 +58,13 @@ public class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Button[] digits = new Button[8];
     private WebView web;
-    private LinearLayout header, panel, pipOverlay;
+    private LinearLayout main, header, panel, pipOverlay;
     private TextView status, timer, pipDigits, pipPhase, pipTimer, pipHint;
     private Button reroll, selectAll, confirm, start;
     private String viewerSource, lastState = "", lastActions = "";
     private JSONObject state = new JSONObject();
-    private boolean active, pendingRead, destroyed;
+    private boolean active, pendingRead, destroyed, handingOff, awaitingOverlay;
+    private boolean restoredPage;
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (!active || destroyed) return;
@@ -93,7 +95,7 @@ public class MainActivity extends Activity {
         buildLayout();
         configureWebView();
         ContextCompat.registerReceiver(this, receiver, new IntentFilter(CONTROL), ContextCompat.RECEIVER_NOT_EXPORTED);
-        if (saved == null || web.restoreState(saved) == null) web.loadUrl(HOME);
+        if (!restoredPage && (saved == null || web.restoreState(saved) == null)) web.loadUrl(HOME);
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
@@ -122,17 +124,22 @@ public class MainActivity extends Activity {
             } else view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
             return insets;
         });
-        LinearLayout main = new LinearLayout(this); main.setOrientation(LinearLayout.VERTICAL);
+        main = new LinearLayout(this); main.setOrientation(LinearLayout.VERTICAL);
         root.addView(main, new FrameLayout.LayoutParams(-1, -1));
-        header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL);
+        header = new LinearLayout(this); header.setOrientation(LinearLayout.VERTICAL);
         header.setPadding(dp(8), 0, dp(8), 0);
         TextView title = label(16); title.setText("랜들 미니 뷰어");
-        header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
+        header.addView(title, new LinearLayout.LayoutParams(-1, dp(28)));
+        LinearLayout tools = new LinearLayout(this);
         Button reload = button("새로고침"); reload.setOnClickListener(view -> web.reload());
-        header.addView(reload);
-        Button pip = button("PiP"); pip.setOnClickListener(view -> enterPip()); header.addView(pip);
+        addControl(tools, reload);
+        Button floating = button("작은 창"); floating.setOnClickListener(view -> openFloatingWindow()); addControl(tools, floating);
+        Button pip = button("PiP"); pip.setOnClickListener(view -> enterPip()); addControl(tools, pip);
+        header.addView(tools);
         main.addView(header);
-        web = new WebView(this); main.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
+        web = WindowSession.take(this); restoredPage = web != null;
+        if (web == null) web = WindowSession.create(this);
+        main.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
         panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(dp(8), dp(4), dp(8), dp(8));
         status = label(12); status.setText("앱 안에서 랜들에 로그인해 주세요."); panel.addView(status);
         LinearLayout numberRow = new LinearLayout(this);
@@ -196,12 +203,12 @@ public class MainActivity extends Activity {
                 + viewerSource + ";return JSON.stringify(" + expression + ");})()";
     }
     private void readState() {
-        if (web == null || destroyed || pendingRead) return;
+        if (web == null || destroyed || handingOff || pendingRead) return;
         if (!isPlayPage()) { showState(new JSONObject()); return; }
         String url = web.getUrl(); pendingRead = true;
         web.evaluateJavascript(script("RandleViewer.snapshot(document)"), raw -> {
             pendingRead = false;
-            if (destroyed || !isPlayPage() || !Objects.equals(url, web.getUrl())) return;
+            if (destroyed || handingOff || !isPlayPage() || !Objects.equals(url, web.getUrl())) return;
             try {
                 Object decoded = new JSONTokener(raw).nextValue();
                 if (!(decoded instanceof String)) return;
@@ -211,7 +218,7 @@ public class MainActivity extends Activity {
         });
     }
     private void perform(String action, int position) {
-        if (destroyed || !isPlayPage()) return;
+        if (destroyed || handingOff || !isPlayPage()) return;
         if (!Arrays.asList("select", "selectAll", "reroll", "confirm", "start").contains(action)) return;
         if ("select".equals(action) && (position < 0 || position >= 8)) return;
         // No JavaScript bridge is exposed to web pages. Every action is revalidated
@@ -278,6 +285,47 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "화면 속 화면 설정을 확인해 주세요.", Toast.LENGTH_LONG).show();
         }
     }
+    private void openFloatingWindow() {
+        if (handingOff || web == null) return;
+        if (!Settings.canDrawOverlays(this)) {
+            awaitingOverlay = true;
+            Toast.makeText(this, "작은 창을 사용하려면 다른 앱 위에 표시를 허용해 주세요.", Toast.LENGTH_LONG).show();
+            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        handingOff = true; pendingRead = false; handler.removeCallbacks(poll);
+        CookieManager.getInstance().flush(); WindowSession.offer(web);
+        try {
+            ContextCompat.startForegroundService(this, new Intent(this, FloatingService.class));
+            moveTaskToBack(true);
+        } catch (RuntimeException error) {
+            restorePage();
+            Toast.makeText(this, "작은 창을 열지 못했습니다. 표시 권한을 확인해 주세요.", Toast.LENGTH_LONG).show();
+        }
+    }
+    private void restorePage() {
+        WebView page = WindowSession.take(this);
+        if (page == null) page = WindowSession.create(this);
+        if (web != null && web != page && !handingOff) { main.removeView(web); web.destroy(); }
+        web = page; handingOff = false; pendingRead = false; lastState = "";
+        if (page.getParent() == null) main.addView(page, 1, new LinearLayout.LayoutParams(-1, 0, 1));
+        configureWebView(); web.onResume();
+        if (web.getUrl() == null) web.loadUrl(HOME);
+        handler.removeCallbacks(poll); handler.post(poll);
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent);
+        if (handingOff || intent.getBooleanExtra("returnedFromFloating", false)) restorePage();
+    }
+    @Override protected void onResume() {
+        super.onResume();
+        if (awaitingOverlay) {
+            awaitingOverlay = false;
+            if (Settings.canDrawOverlays(this)) openFloatingWindow();
+        } else if (FloatingService.isRunning()) {
+            startService(new Intent(this, FloatingService.class).setAction(FloatingService.RETURN));
+        } else if (handingOff) restorePage();
+    }
     @Override public void onPictureInPictureModeChanged(boolean inPip, Configuration configuration) {
         super.onPictureInPictureModeChanged(inPip, configuration);
         if (header == null) return;
@@ -286,19 +334,19 @@ public class MainActivity extends Activity {
     }
     @Override protected void onStart() {
         super.onStart(); active = true;
-        if (web != null) web.onResume(); handler.removeCallbacks(poll); handler.post(poll);
+        if (web != null && !handingOff) web.onResume(); handler.removeCallbacks(poll); handler.post(poll);
     }
     @Override protected void onStop() {
         active = false; handler.removeCallbacks(poll);
-        if (web != null) { web.onPause(); CookieManager.getInstance().flush(); }
+        if (web != null && !handingOff) { web.onPause(); CookieManager.getInstance().flush(); }
         super.onStop();
     }
     @Override protected void onSaveInstanceState(Bundle out) {
-        if (web != null) web.saveState(out); super.onSaveInstanceState(out);
+        if (web != null && !handingOff) web.saveState(out); super.onSaveInstanceState(out);
     }
     @Override protected void onDestroy() {
         destroyed = true; handler.removeCallbacksAndMessages(null);
-        if (web != null) { unregisterReceiver(receiver); web.destroy(); }
+        if (web != null) { unregisterReceiver(receiver); if (!handingOff) web.destroy(); }
         super.onDestroy();
     }
     @Override public void onBackPressed() {
