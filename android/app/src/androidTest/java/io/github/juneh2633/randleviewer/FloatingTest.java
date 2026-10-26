@@ -52,6 +52,18 @@ public class FloatingTest {
         instrumentation.runOnMainSync(() -> original.evaluateJavascript(source, value -> { result.set(value); latch.countDown(); }));
         assertTrue(latch.await(5, TimeUnit.SECONDS)); return result.get();
     }
+    private boolean dismissLauncherDialog() throws Exception {
+        android.view.accessibility.AccessibilityNodeInfo root = instrumentation.getUiAutomation().getRootInActiveWindow();
+        if (root == null || root.findAccessibilityNodeInfosByText("Quickstep").isEmpty()) return false;
+        for (android.view.accessibility.AccessibilityNodeInfo label : root.findAccessibilityNodeInfosByText("Close app")) {
+            android.view.accessibility.AccessibilityNodeInfo action = label;
+            while (action != null && !action.isClickable()) action = action.getParent();
+            if (action != null && action.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) {
+                Thread.sleep(500); return true;
+            }
+        }
+        return false;
+    }
     private void waitFor(BooleanSupplier condition) throws Exception {
         for (int i = 0; i < 240; i++) {
             AtomicBoolean result = new AtomicBoolean(); instrumentation.runOnMainSync(() -> result.set(condition.getAsBoolean()));
@@ -104,17 +116,24 @@ public class FloatingTest {
             assertTrue(rendered.await(5, TimeUnit.SECONDS));
             // Touch an HTML input in the service window and type while the
             // originating activity is in the background.
-            JSONObject point = new JSONObject((String) new JSONTokener(evaluate("JSON.stringify((()=>{let r=document.getElementById('answer').getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2,d:devicePixelRatio}})())")).nextValue());
+            // The emulator launcher can show its own ANR over the overlay. Only
+            // dismiss that named system dialog; app failures remain failures.
+            dismissLauncherDialog();
+            JSONObject point = null; float x = 0, y = 0; String inputValue = "";
+            for (int attempt = 0; attempt < 2; attempt++) {
+            point = new JSONObject((String) new JSONTokener(evaluate("JSON.stringify((()=>{let r=document.getElementById('answer').getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2,d:devicePixelRatio}})())")).nextValue());
             int[] location = new int[2]; instrumentation.runOnMainSync(() -> original.getLocationOnScreen(location));
-            float x = location[0] + (float) (point.getDouble("x") * point.getDouble("d"));
-            float y = location[1] + (float) (point.getDouble("y") * point.getDouble("d"));
+            x = location[0] + (float) (point.getDouble("x") * point.getDouble("d"));
+            y = location[1] + (float) (point.getDouble("y") * point.getDouble("d"));
             long now = SystemClock.uptimeMillis();
             MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0), up = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, x, y, 0);
             down.setSource(InputDevice.SOURCE_TOUCHSCREEN); up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             instrumentation.getUiAutomation().injectInputEvent(down, true); instrumentation.getUiAutomation().injectInputEvent(up, true); down.recycle(); up.recycle();
             Thread.sleep(300); instrumentation.sendStringSync("7");
+            inputValue = evaluate("document.getElementById('answer').value");
+            if (inputValue.contains("7") || !dismissLauncherDialog()) break;
+            }
             shell("screencap -p /data/local/tmp/randle-floating-input.png");
-            String inputValue = evaluate("document.getElementById('answer').value");
             assertTrue("Input=" + inputValue + ", focus=" + evaluate("document.activeElement.id") + ", point=" + point + ", native=" + x + "," + y, inputValue.contains("7"));
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "전체 선택").performClick());
             waitFor(() -> button(FloatingService.instance.window, "8").isSelected());
