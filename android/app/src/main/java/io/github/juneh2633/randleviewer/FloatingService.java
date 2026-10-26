@@ -9,6 +9,8 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
@@ -41,6 +43,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.core.content.ContextCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -63,11 +66,15 @@ public final class FloatingService extends Service {
     private WindowManager.LayoutParams layout;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Button[] digits = new Button[8];
-    private Button reroll, selectAll, confirm, start, size;
+    private Button reroll, selectAll, confirm, start, size, autoToggle;
     private TextView status, timer;
-    private String source, lastState = "";
+    private String source, autoSource, lastState = "";
+    private JSONObject state = new JSONObject();
     private boolean closed, returning, reading, expanded;
     private int generation;
+    private final BroadcastReceiver screen = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) { if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) AutoMode.pause(web, "화면이 꺼져 자동 정지"); }
+    };
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             if (closed || returning) return;
@@ -77,6 +84,7 @@ public final class FloatingService extends Service {
     static boolean isRunning() { return instance != null && !instance.closed && !instance.returning; }
     @Override public void onCreate() {
         super.onCreate(); instance = this;
+        ContextCompat.registerReceiver(this, screen, new IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED);
         NotificationManager notifications = getSystemService(NotificationManager.class);
         notifications.createNotificationChannel(new NotificationChannel(CHANNEL, "작은 창 실행", NotificationManager.IMPORTANCE_LOW));
         Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -99,6 +107,7 @@ public final class FloatingService extends Service {
                 while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
                 source = bytes.toString(StandardCharsets.UTF_8.name());
             }
+            autoSource = AutoMode.source(this);
             uiContext = this;
             if (Build.VERSION.SDK_INT >= 30) {
                 Display display = getSystemService(DisplayManager.class).getDisplay(Display.DEFAULT_DISPLAY);
@@ -159,6 +168,13 @@ public final class FloatingService extends Service {
         window.addView(title);
         window.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
         status = label(11); status.setText("숫자와 선택 상태를 확인하는 중입니다."); window.addView(status);
+        status.setOnLongClickListener(view -> {
+            AutoMode.pause(web, "명령 입력 중");
+            if (activeDialog != null) activeDialog.cancel();
+            AlertDialog dialog = AutoMode.dialog(uiContext, true, this::runAutoCommand); activeDialog = dialog;
+            dialog.setOnDismissListener(item -> { if (activeDialog == dialog) activeDialog = null; });
+            return true;
+        });
         LinearLayout numberRow = new LinearLayout(uiContext);
         for (int index = 0; index < 8; index++) {
             final int position = index;
@@ -166,6 +182,8 @@ public final class FloatingService extends Service {
             digits[index].setOnClickListener(view -> perform("select", position)); add(numberRow, digits[index], 44);
         }
         window.addView(numberRow); timer = label(11); timer.setTextColor(AMBER); window.addView(timer);
+        autoToggle = button("자동 일시 정지"); autoToggle.setVisibility(View.GONE);
+        autoToggle.setOnClickListener(view -> runAutoCommand(AutoMode.state(state).optBoolean("running") ? "/auto pause" : "/auto resume")); window.addView(autoToggle);
         LinearLayout first = new LinearLayout(uiContext), second = new LinearLayout(uiContext);
         reroll = button("선택 자리 굴리기"); selectAll = button("전체 선택"); confirm = button("이 숫자로 확정"); start = button("숫자 뽑기");
         reroll.setOnClickListener(view -> perform("reroll", -1)); selectAll.setOnClickListener(view -> perform("selectAll", -1));
@@ -247,13 +265,13 @@ public final class FloatingService extends Service {
             && ("/play".equals(uri.getPath()) || "/play/".equals(uri.getPath()));
     }
     private String script(String expression) {
-        return "(function(){if(location.origin!=='https://randle.lixx.kr'||!/^\\/play\\/?$/.test(location.pathname))return null;" + source + ";return JSON.stringify(" + expression + ");})()";
+        return "(function(){if(location.origin!=='https://randle.lixx.kr'||!/^\\/play\\/?$/.test(location.pathname))return null;" + source + ";" + autoSource + ";return JSON.stringify(" + expression + ");})()";
     }
     private void read() {
         if (closed || returning || reading) return;
-        if (!playPage()) { show(new JSONObject()); return; }
+        if (!playPage()) { AutoMode.pause(web, "페이지 이동으로 자동 정지"); show(new JSONObject()); return; }
         final int currentGeneration = generation; reading = true;
-        web.evaluateJavascript(script("RandleViewer.snapshot(document)"), raw -> {
+        web.evaluateJavascript(script("RandleAndroidAuto.snapshot()"), raw -> {
             if (closed || returning || currentGeneration != generation) return;
             reading = false;
             try {
@@ -264,6 +282,7 @@ public final class FloatingService extends Service {
     }
     private void show(JSONObject data) {
         if (status == null || closed || returning) return;
+        state = data;
         JSONArray values = data.optJSONArray("digits"), selected = data.optJSONArray("selected"), selectable = data.optJSONArray("selectable");
         for (int index = 0; index < 8; index++) {
             String value = values == null ? "?" : values.optString(index, "?"); if (!value.matches("[0-9?]")) value = "?";
@@ -272,7 +291,10 @@ public final class FloatingService extends Service {
             boolean chosen = selected != null && selected.optBoolean(index); digits[index].setSelected(chosen);
             digits[index].setBackgroundTintList(ColorStateList.valueOf(chosen ? AMBER : BLUE));
         }
-        status.setText(data.optString("status", "위 웹 화면에서 로그인하거나 인증해 주세요.")); timer.setText(data.optString("timer"));
+        JSONObject automation = AutoMode.state(data);
+        autoToggle.setVisibility(automation.optBoolean("enabled") ? View.VISIBLE : View.GONE);
+        autoToggle.setText(automation.optBoolean("running") ? "자동 일시 정지" : "자동 재개");
+        status.setText(AutoMode.message(data, data.optString("status", "위 웹 화면에서 로그인하거나 인증해 주세요."))); timer.setText(data.optString("timer"));
         status.setTextColor("인증 필요".equals(data.optString("phase")) ? AMBER : Color.WHITE);
         reroll.setEnabled(data.optBoolean("canReroll")); selectAll.setEnabled(data.optBoolean("canSelectAll"));
         confirm.setEnabled(data.optBoolean("canConfirm")); start.setEnabled(data.optBoolean("canStart")); start.setText(data.optString("startLabel", "숫자 뽑기"));
@@ -280,10 +302,19 @@ public final class FloatingService extends Service {
     private void perform(String action, int position) {
         if (closed || returning || !playPage() || !Arrays.asList("select", "selectAll", "reroll", "confirm", "start").contains(action)) return;
         if ("select".equals(action) && (position < 0 || position >= 8)) return;
+        AutoMode.pause(web, "직접 조작하여 자동 일시 정지");
         web.evaluateJavascript(script("RandleViewer.perform(document," + JSONObject.quote(action) + "," + position + ")"), result -> {
             if (closed || returning) return;
             if (!"\"true\"".equals(result)) Toast.makeText(this, "현재 사용할 수 없는 버튼입니다.", Toast.LENGTH_SHORT).show();
             read();
+        });
+    }
+    void runAutoCommand(String command) {
+        if (!AutoMode.valid(command) || closed || returning || !playPage()) return;
+        web.evaluateJavascript(script("RandleAndroidAuto.command(" + JSONObject.quote(command) + ")"), result -> {
+            if (closed || returning) return;
+            if (!"\"true\"".equals(result)) Toast.makeText(this, "인증과 페이지 상태를 확인해 주세요.", Toast.LENGTH_SHORT).show();
+            lastState = ""; read();
         });
     }
     private void returnToApp() {
@@ -298,6 +329,7 @@ public final class FloatingService extends Service {
     @Override public void onTaskRemoved(Intent rootIntent) { stopSelf(); super.onTaskRemoved(rootIntent); }
     @Override public void onDestroy() {
         closed = true; handler.removeCallbacksAndMessages(null);
+        unregisterReceiver(screen);
         if (activeDialog != null) activeDialog.cancel();
         if (window != null && window.isAttachedToWindow()) manager.removeView(window);
         if (web != null && !returning) {

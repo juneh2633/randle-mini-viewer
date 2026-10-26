@@ -60,8 +60,8 @@ public class MainActivity extends Activity {
     private WebView web;
     private LinearLayout main, header, panel, pipOverlay;
     private TextView status, timer, pipDigits, pipPhase, pipTimer, pipHint;
-    private Button reroll, selectAll, confirm, start;
-    private String viewerSource, lastState = "", lastActions = "";
+    private Button reroll, selectAll, confirm, start, autoToggle;
+    private String viewerSource, autoSource, lastState = "", lastActions = "";
     private JSONObject state = new JSONObject();
     private boolean active, pendingRead, destroyed, handingOff, awaitingOverlay;
     private boolean restoredPage;
@@ -76,6 +76,7 @@ public class MainActivity extends Activity {
         @Override public void onReceive(Context context, Intent intent) {
             if (!CONTROL.equals(intent.getAction())) return;
             String action = intent.getStringExtra("command");
+            if ("autoPause".equals(action)) { runAutoCommand("/auto pause"); return; }
             if ("confirm".equals(action) || "start".equals(action)) perform(action, -1);
         }
     };
@@ -87,6 +88,7 @@ public class MainActivity extends Activity {
             byte[] buffer = new byte[4096]; int count;
             while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
             viewerSource = bytes.toString(StandardCharsets.UTF_8.name());
+            autoSource = AutoMode.source(this);
         } catch (IOException error) {
             TextView message = new TextView(this);
             message.setText("숫자 표시 파일을 읽지 못했습니다. 앱을 다시 설치해 주세요.");
@@ -129,6 +131,7 @@ public class MainActivity extends Activity {
         header = new LinearLayout(this); header.setOrientation(LinearLayout.VERTICAL);
         header.setPadding(dp(8), 0, dp(8), 0);
         TextView title = label(16); title.setText("랜들 미니 뷰어");
+        title.setOnLongClickListener(view -> { AutoMode.pause(web, "명령 입력 중"); AutoMode.dialog(this, false, this::runAutoCommand); return true; });
         header.addView(title, new LinearLayout.LayoutParams(-1, dp(28)));
         LinearLayout tools = new LinearLayout(this);
         Button reload = button("새로고침"); reload.setOnClickListener(view -> web.reload());
@@ -152,6 +155,8 @@ public class MainActivity extends Activity {
         }
         panel.addView(numberRow);
         timer = label(11); timer.setTextColor(AMBER); panel.addView(timer);
+        autoToggle = button("자동 일시 정지"); autoToggle.setVisibility(View.GONE);
+        autoToggle.setOnClickListener(view -> runAutoCommand(AutoMode.state(state).optBoolean("running") ? "/auto pause" : "/auto resume")); panel.addView(autoToggle);
         LinearLayout first = new LinearLayout(this), second = new LinearLayout(this);
         reroll = button("선택 자리 굴리기"); reroll.setOnClickListener(view -> perform("reroll", -1));
         selectAll = button("전체 선택"); selectAll.setOnClickListener(view -> perform("selectAll", -1));
@@ -200,13 +205,13 @@ public class MainActivity extends Activity {
     }
     private String script(String expression) {
         return "(function(){if(location.origin!=='https://randle.lixx.kr'||!/^\\/play\\/?$/.test(location.pathname))return null;"
-                + viewerSource + ";return JSON.stringify(" + expression + ");})()";
+                + viewerSource + ";" + autoSource + ";return JSON.stringify(" + expression + ");})()";
     }
     private void readState() {
         if (web == null || destroyed || handingOff || pendingRead) return;
-        if (!isPlayPage()) { showState(new JSONObject()); return; }
+        if (!isPlayPage()) { AutoMode.pause(web, "페이지 이동으로 자동 정지"); showState(new JSONObject()); return; }
         String url = web.getUrl(); pendingRead = true;
-        web.evaluateJavascript(script("RandleViewer.snapshot(document)"), raw -> {
+        web.evaluateJavascript(script("RandleAndroidAuto.snapshot()"), raw -> {
             pendingRead = false;
             if (destroyed || handingOff || !isPlayPage() || !Objects.equals(url, web.getUrl())) return;
             try {
@@ -223,6 +228,7 @@ public class MainActivity extends Activity {
         if ("select".equals(action) && (position < 0 || position >= 8)) return;
         // No JavaScript bridge is exposed to web pages. Every action is revalidated
         // by the same guarded manual-control code used by the desktop viewer.
+        AutoMode.pause(web, "직접 조작하여 자동 일시 정지");
         String expression = "RandleViewer.perform(document," + JSONObject.quote(action) + "," + position + ")";
         web.evaluateJavascript(script(expression), raw -> {
             if (destroyed) return;
@@ -245,11 +251,15 @@ public class MainActivity extends Activity {
             digits[index].setSelected(chosen);
             digits[index].setBackgroundTintList(android.content.res.ColorStateList.valueOf(chosen ? AMBER : BLUE));
         }
-        status.setText(value.optString("status", "앱 안에서 랜들에 로그인해 주세요."));
+        JSONObject automation = AutoMode.state(value);
+        autoToggle.setVisibility(automation.optBoolean("enabled") ? View.VISIBLE : View.GONE);
+        autoToggle.setText(automation.optBoolean("running") ? "자동 일시 정지" : "자동 재개");
+        status.setText(AutoMode.message(value, value.optString("status", "앱 안에서 랜들에 로그인해 주세요.")));
         String countdown = value.optString("timer"); timer.setText(countdown); pipTimer.setText(countdown);
         pipDigits.setText(number); pipPhase.setText(value.optString("phase", "대기"));
         boolean human = "인증 필요".equals(value.optString("phase")); pipPhase.setTextColor(human ? AMBER : BLUE);
         pipHint.setText(human ? "앱을 펼쳐 직접 인증해 주세요." : "자리 선택·리롤은 앱을 펼쳐서 진행하세요.");
+        if (automation.optBoolean("enabled")) pipHint.setText(automation.optString("message"));
         reroll.setEnabled(value.optBoolean("canReroll")); selectAll.setEnabled(value.optBoolean("canSelectAll"));
         confirm.setEnabled(value.optBoolean("canConfirm")); start.setEnabled(value.optBoolean("canStart"));
         start.setText(value.optString("startLabel", "숫자 뽑기"));
@@ -265,6 +275,7 @@ public class MainActivity extends Activity {
         ArrayList<RemoteAction> actions = new ArrayList<>();
         actions.add(remote("confirm", "이 숫자로 확정", R.drawable.ic_confirm, 1, state.optBoolean("canConfirm")));
         actions.add(remote("start", state.optString("startLabel", "숫자 뽑기"), R.drawable.ic_next, 2, state.optBoolean("canStart")));
+        if (AutoMode.state(state).optBoolean("enabled")) actions.add(remote("autoPause", "자동 일시 정지", R.drawable.ic_pause, 3, AutoMode.state(state).optBoolean("running")));
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder().setAspectRatio(new Rational(16, 9))
                 .setActions(actions.subList(0, Math.min(actions.size(), getMaxNumPictureInPictureActions())));
         if (Build.VERSION.SDK_INT >= 31) builder.setSeamlessResizeEnabled(false);
@@ -272,7 +283,7 @@ public class MainActivity extends Activity {
     }
     private void updatePipActions() {
         if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return;
-        String signature = state.optBoolean("canConfirm") + ":" + state.optBoolean("canStart") + ":" + state.optString("startLabel");
+        String signature = state.optBoolean("canConfirm") + ":" + state.optBoolean("canStart") + ":" + state.optString("startLabel") + ":" + AutoMode.state(state).optBoolean("enabled") + ":" + AutoMode.state(state).optBoolean("running");
         if (!signature.equals(lastActions)) { lastActions = signature; setPictureInPictureParams(pipParams()); }
     }
     private void enterPip() {
@@ -302,6 +313,14 @@ public class MainActivity extends Activity {
             restorePage();
             Toast.makeText(this, "작은 창을 열지 못했습니다. 표시 권한을 확인해 주세요.", Toast.LENGTH_LONG).show();
         }
+    }
+    void runAutoCommand(String command) {
+        if (!AutoMode.valid(command) || destroyed || handingOff || !isPlayPage()) return;
+        web.evaluateJavascript(script("RandleAndroidAuto.command(" + JSONObject.quote(command) + ")"), result -> {
+            if (destroyed || handingOff) return;
+            if (!"\"true\"".equals(result)) Toast.makeText(this, "인증과 페이지 상태를 확인해 주세요.", Toast.LENGTH_SHORT).show();
+            lastState = ""; readState();
+        });
     }
     private void restorePage() {
         WebView page = WindowSession.take(this);
@@ -338,7 +357,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onStop() {
         active = false; handler.removeCallbacks(poll);
-        if (web != null && !handingOff) { web.onPause(); CookieManager.getInstance().flush(); }
+        if (web != null && !handingOff) { AutoMode.pause(web, "앱이 보이지 않아 자동 정지"); web.onPause(); CookieManager.getInstance().flush(); }
         super.onStop();
     }
     @Override protected void onSaveInstanceState(Bundle out) {
