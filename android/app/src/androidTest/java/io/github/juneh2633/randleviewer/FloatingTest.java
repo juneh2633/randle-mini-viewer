@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.view.MotionEvent;
+import android.view.InputDevice;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
@@ -92,6 +93,11 @@ public class FloatingTest {
             waitFor(() -> FloatingService.instance.window.getWidth() > originalWidth[0]);
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "작게").performClick());
             waitFor(() -> FloatingService.instance.window.getWidth() <= originalWidth[0]);
+            CountDownLatch rendered = new CountDownLatch(1);
+            instrumentation.runOnMainSync(() -> original.postVisualStateCallback(1, new WebView.VisualStateCallback() {
+                @Override public void onComplete(long requestId) { rendered.countDown(); }
+            }));
+            assertTrue(rendered.await(5, TimeUnit.SECONDS));
             // Touch an HTML input in the service window and type while the
             // originating activity is in the background.
             JSONObject point = new JSONObject((String) new JSONTokener(evaluate("JSON.stringify((()=>{let r=document.getElementById('answer').getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2,d:devicePixelRatio}})())")).nextValue());
@@ -100,9 +106,12 @@ public class FloatingTest {
             float y = location[1] + (float) (point.getDouble("y") * point.getDouble("d"));
             long now = SystemClock.uptimeMillis();
             MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0), up = MotionEvent.obtain(now, now + 50, MotionEvent.ACTION_UP, x, y, 0);
+            down.setSource(InputDevice.SOURCE_TOUCHSCREEN); up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             instrumentation.getUiAutomation().injectInputEvent(down, true); instrumentation.getUiAutomation().injectInputEvent(up, true); down.recycle(); up.recycle();
             Thread.sleep(300); instrumentation.sendStringSync("7");
-            assertTrue(evaluate("document.getElementById('answer').value").contains("7"));
+            shell("screencap -p /data/local/tmp/randle-floating-input.png");
+            String inputValue = evaluate("document.getElementById('answer').value");
+            assertTrue("Input=" + inputValue + ", focus=" + evaluate("document.activeElement.id") + ", point=" + point + ", native=" + x + "," + y, inputValue.contains("7"));
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "전체 선택").performClick());
             waitFor(() -> button(FloatingService.instance.window, "8").isSelected());
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "선택 자리 굴리기").performClick());
