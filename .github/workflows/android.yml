@@ -32,13 +32,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            status=0
-            gradle -p android --no-daemon :app:connectedDebugAndroidTest || status=$?
-            adb pull /data/local/tmp/randle-pip-smoke.png android/app/build/reports/pip-smoke.png || true
-            adb pull /data/local/tmp/randle-floating-smoke.png android/app/build/reports/floating-smoke.png || true
-            adb pull /data/local/tmp/randle-floating-input.png android/app/build/reports/floating-input.png || true
-            exit $status
+          script: bash android/test-on-emulator.sh
       - name: Save APK and lint report
         if: always()
         uses: actions/upload-artifact@v4
