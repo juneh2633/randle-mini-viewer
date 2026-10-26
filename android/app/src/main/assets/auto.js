@@ -28,14 +28,14 @@
     if (current.canConfirm && current.digits.length === 8 && current.digits.every(digit => /^\d$/.test(digit))) {
       const number = current.digits.join('');
       if (reviewAt === null || reviewNumber !== number) { reviewAt = now; reviewNumber = number; }
-      const remaining = Math.max(0, 2000 - (now - reviewAt));
+      const remaining = Math.max(0, 1000 - (now - reviewAt));
       if (remaining > 0) { message = `${(remaining / 1000).toFixed(1)}초 후 자동 확정 · 필요하면 일시 정지`; return; }
       action = 'confirm';
     } else {
       reviewAt = null;
       if (current.canStart) action = 'start';
     }
-    if (!action || now - lastClick < 1500) { message = '자동 뽑기 · 사이트 응답 대기'; return; }
+    if (!action || now - lastClick < 1000) { message = '자동 뽑기 · 사이트 응답 대기'; return; }
     // The manual-control module rechecks disabled controls, modals and CAPTCHA
     // immediately before the single click. No endpoints or timers are bypassed.
     if (root.RandleViewer.perform(document, action)) { lastClick = now; reviewAt = null; }

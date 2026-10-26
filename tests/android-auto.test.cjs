@@ -29,22 +29,22 @@ test('Android auto stays off until the exact command and does not evaluate input
   assert.deepEqual(counts(), [0, 0]); assert.equal(auto.status().enabled, false);
   dom.window.close();
 });
-test('Android auto repeatedly draws and confirms with a two-second review window', () => {
+test('Android auto repeatedly draws and confirms with a one-second review window', () => {
   const {dom, auto, advance, counts} = setup();
   assert.equal(auto.command('/auto start'), true);
   auto.snapshot(); assert.deepEqual(counts(), [1, 0]);
-  auto.snapshot(); advance(1999); auto.snapshot(); assert.deepEqual(counts(), [1, 0]);
+  auto.snapshot(); advance(999); auto.snapshot(); assert.deepEqual(counts(), [1, 0]);
   advance(1); auto.snapshot(); assert.deepEqual(counts(), [1, 1]);
-  advance(1499); auto.snapshot(); assert.deepEqual(counts(), [1, 1]);
+  advance(999); auto.snapshot(); assert.deepEqual(counts(), [1, 1]);
   advance(1); auto.snapshot(); assert.deepEqual(counts(), [2, 1]);
-  auto.snapshot(); advance(2000); auto.snapshot(); assert.deepEqual(counts(), [2, 2]);
+  auto.snapshot(); advance(1000); auto.snapshot(); assert.deepEqual(counts(), [2, 2]);
   dom.window.close();
 });
 test('pause cancels pending confirmation, resume restarts the review delay and stop relocks', () => {
   const {dom, auto, advance, counts} = setup();
   auto.command('/auto start'); auto.snapshot(); auto.snapshot(); advance(1500);
   auto.command('/auto pause'); advance(5000); auto.snapshot(); assert.deepEqual(counts(), [1, 0]);
-  auto.command('/auto resume'); auto.snapshot(); advance(1999); auto.snapshot(); assert.deepEqual(counts(), [1, 0]);
+  auto.command('/auto resume'); auto.snapshot(); advance(999); auto.snapshot(); assert.deepEqual(counts(), [1, 0]);
   advance(1); auto.snapshot(); assert.deepEqual(counts(), [1, 1]);
   auto.command('/auto stop'); assert.equal(auto.status().enabled, false);
   assert.equal(auto.command('/auto resume'), false);

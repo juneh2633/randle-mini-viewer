@@ -89,10 +89,14 @@ public class FloatingTest {
             waitFor(() -> button(FloatingService.instance.window, "3").isSelected());
             assertEquals("\"keep\"", evaluate("document.getElementById('answer').value"));
             int[] originalWidth = new int[1];
+            instrumentation.runOnMainSync(() -> {
+                float density = activity.getResources().getDisplayMetrics().density;
+                assertTrue(FloatingService.instance.window.getWidth() / density <= 261);
+                assertTrue(FloatingService.instance.window.getHeight() / density <= 241);
+                assertTrue(button(FloatingService.instance.window, "이 숫자로 확정").getHeight() / density <= 31);
+            });
             instrumentation.runOnMainSync(() -> { originalWidth[0] = FloatingService.instance.window.getWidth(); button(FloatingService.instance.window, "크게").performClick(); });
             waitFor(() -> FloatingService.instance.window.getWidth() > originalWidth[0]);
-            instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "작게").performClick());
-            waitFor(() -> FloatingService.instance.window.getWidth() <= originalWidth[0]);
             CountDownLatch rendered = new CountDownLatch(1);
             instrumentation.runOnMainSync(() -> original.postVisualStateCallback(1, new WebView.VisualStateCallback() {
                 @Override public void onComplete(long requestId) { rendered.countDown(); }
@@ -121,6 +125,8 @@ public class FloatingTest {
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "한 판 더 굴리기").performClick());
             assertEquals("1", evaluate("window.starts"));
             Thread.sleep(600); assertEquals("1", evaluate("window.confirms")); assertEquals("1", evaluate("window.starts"));
+            instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "작게").performClick());
+            waitFor(() -> FloatingService.instance.window.getWidth() <= originalWidth[0]);
             shell("screencap -p /data/local/tmp/randle-floating-smoke.png");
             instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "앱").performClick());
             waitFor(() -> !FloatingService.isRunning() && original.getParent() != null && find(activity.getWindow().getDecorView(), WebView.class, null) == original);

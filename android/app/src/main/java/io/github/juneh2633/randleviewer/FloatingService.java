@@ -40,6 +40,8 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.graphics.drawable.GradientDrawable;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -68,6 +70,7 @@ public final class FloatingService extends Service {
     private final Button[] digits = new Button[8];
     private Button reroll, selectAll, confirm, start, size, autoToggle;
     private TextView status, timer;
+    private FrameLayout pageFrame;
     private String source, autoSource, lastState = "";
     private JSONObject state = new JSONObject();
     private boolean closed, returning, reading, expanded;
@@ -118,7 +121,7 @@ public final class FloatingService extends Service {
             web = WindowSession.take(uiContext); if (web == null) web = WindowSession.create(uiContext);
             buildWindow(); configurePage();
             Rect bounds = bounds();
-            layout = new WindowManager.LayoutParams(Math.min(dp(350), bounds.width() - dp(16)), Math.min(dp(560), bounds.height() - dp(80)),
+            layout = new WindowManager.LayoutParams(Math.min(dp(260), bounds.width() - dp(16)), Math.min(dp(240), bounds.height() - dp(80)),
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
             layout.gravity = Gravity.TOP | Gravity.START; layout.x = dp(8); layout.y = dp(48);
@@ -140,11 +143,13 @@ public final class FloatingService extends Service {
     private Button button(String title) {
         Button control = new Button(uiContext); control.setText(title); control.setAllCaps(false); control.setTextSize(11);
         control.setTextColor(BACKGROUND); control.setBackgroundTintList(ColorStateList.valueOf(BLUE)); control.setMinWidth(0);
-        control.setPadding(dp(4), 0, dp(4), 0); return control;
+        control.setMinimumWidth(0); control.setMinHeight(0); control.setMinimumHeight(0);
+        GradientDrawable background = new GradientDrawable(); background.setColor(BLUE); background.setCornerRadius(dp(4)); control.setBackground(background);
+        control.setPadding(dp(2), 0, dp(2), 0); return control;
     }
     private TextView label(int size) { TextView view = new TextView(uiContext); view.setTextSize(size); view.setTextColor(Color.WHITE); return view; }
     private void add(LinearLayout row, View child, int height) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(height), 1); params.setMargins(dp(1), 0, dp(1), 0); row.addView(child, params);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(height), 1); params.setMargins(dp(1), dp(1), dp(1), dp(1)); row.addView(child, params);
     }
     @SuppressLint("ClickableViewAccessibility")
     private void buildWindow() {
@@ -161,13 +166,15 @@ public final class FloatingService extends Service {
                 return true;
             }
         });
-        title.addView(move, new LinearLayout.LayoutParams(0, dp(40), 1));
-        size = button("크게"); size.setOnClickListener(view -> toggleSize()); title.addView(size, new LinearLayout.LayoutParams(dp(48), dp(40)));
-        Button app = button("앱"); app.setOnClickListener(view -> returnToApp()); title.addView(app, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        Button close = button("닫기"); close.setOnClickListener(view -> stopSelf()); title.addView(close, new LinearLayout.LayoutParams(dp(44), dp(40)));
+        title.addView(move, new LinearLayout.LayoutParams(0, dp(28), 1));
+        size = button("크게"); size.setOnClickListener(view -> toggleSize()); title.addView(size, new LinearLayout.LayoutParams(dp(40), dp(28)));
+        Button app = button("앱"); app.setOnClickListener(view -> returnToApp()); title.addView(app, new LinearLayout.LayoutParams(dp(32), dp(28)));
+        Button close = button("닫기"); close.setOnClickListener(view -> stopSelf()); title.addView(close, new LinearLayout.LayoutParams(dp(36), dp(28)));
         window.addView(title);
-        window.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
-        status = label(11); status.setText("숫자와 선택 상태를 확인하는 중입니다."); window.addView(status);
+        pageFrame = new FrameLayout(uiContext); pageFrame.setClipChildren(true);
+        pageFrame.addView(web, new FrameLayout.LayoutParams(-1, dp(360)));
+        window.addView(pageFrame, new LinearLayout.LayoutParams(-1, dp(1)));
+        status = label(10); status.setSingleLine(true); status.setEllipsize(android.text.TextUtils.TruncateAt.END); status.setText("숫자를 확인하는 중입니다."); window.addView(status);
         status.setOnLongClickListener(view -> {
             AutoMode.pause(web, "명령 입력 중");
             if (activeDialog != null) activeDialog.cancel();
@@ -178,38 +185,38 @@ public final class FloatingService extends Service {
         LinearLayout numberRow = new LinearLayout(uiContext);
         for (int index = 0; index < 8; index++) {
             final int position = index;
-            digits[index] = button("?"); digits[index].setTextSize(19); digits[index].setPadding(0, 0, 0, 0); digits[index].setEnabled(false);
-            digits[index].setOnClickListener(view -> perform("select", position)); add(numberRow, digits[index], 44);
+            digits[index] = button("?"); digits[index].setTextSize(18); digits[index].setPadding(0, 0, 0, 0); digits[index].setEnabled(false);
+            digits[index].setOnClickListener(view -> perform("select", position)); add(numberRow, digits[index], 34);
         }
-        window.addView(numberRow); timer = label(11); timer.setTextColor(AMBER); window.addView(timer);
+        window.addView(numberRow); timer = label(10); timer.setSingleLine(true); timer.setTextColor(AMBER); window.addView(timer);
         autoToggle = button("자동 일시 정지"); autoToggle.setVisibility(View.GONE);
-        autoToggle.setOnClickListener(view -> runAutoCommand(AutoMode.state(state).optBoolean("running") ? "/auto pause" : "/auto resume")); window.addView(autoToggle);
+        autoToggle.setOnClickListener(view -> runAutoCommand(AutoMode.state(state).optBoolean("running") ? "/auto pause" : "/auto resume")); window.addView(autoToggle, new LinearLayout.LayoutParams(-1, dp(28)));
         LinearLayout first = new LinearLayout(uiContext), second = new LinearLayout(uiContext);
         reroll = button("선택 자리 굴리기"); selectAll = button("전체 선택"); confirm = button("이 숫자로 확정"); start = button("숫자 뽑기");
         reroll.setOnClickListener(view -> perform("reroll", -1)); selectAll.setOnClickListener(view -> perform("selectAll", -1));
         confirm.setOnClickListener(view -> perform("confirm", -1)); start.setOnClickListener(view -> perform("start", -1));
         for (Button control : new Button[]{reroll, selectAll, confirm, start}) control.setEnabled(false);
-        add(first, reroll, 42); add(first, selectAll, 42); add(second, confirm, 42); add(second, start, 42);
+        add(first, reroll, 30); add(first, selectAll, 30); add(second, confirm, 30); add(second, start, 30);
         window.addView(first); window.addView(second);
         LinearLayout footer = new LinearLayout(uiContext);
-        Button back = button("뒤로"); back.setOnClickListener(view -> { if (web.canGoBack()) web.goBack(); }); add(footer, back, 36);
-        Button reload = button("새로고침"); reload.setOnClickListener(view -> web.reload()); add(footer, reload, 36);
+        Button back = button("뒤로"); back.setOnClickListener(view -> { if (web.canGoBack()) web.goBack(); }); add(footer, back, 24);
+        Button reload = button("새로고침"); reload.setOnClickListener(view -> web.reload()); add(footer, reload, 24);
         TextView resize = label(12); resize.setText("크기 조절 ↘"); resize.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL); resize.setContentDescription("창 크기 조절");
         resize.setOnTouchListener(new View.OnTouchListener() {
             float x, y; int width, height;
             @Override public boolean onTouch(View view, MotionEvent event) {
                 if (layout == null) return false;
                 if (event.getAction() == MotionEvent.ACTION_DOWN) { x = event.getRawX(); y = event.getRawY(); width = layout.width; height = layout.height; return true; }
-                if (event.getAction() == MotionEvent.ACTION_MOVE) { layout.width = width + Math.round(event.getRawX() - x); layout.height = height + Math.round(event.getRawY() - y); expanded = false; size.setText("크게"); clamp(); applyLayout(); return true; }
+                if (event.getAction() == MotionEvent.ACTION_MOVE) { layout.width = width + Math.round(event.getRawX() - x); layout.height = height + Math.round(event.getRawY() - y); clamp(); applyLayout(); return true; }
                 return true;
             }
         });
-        add(footer, resize, 36); window.addView(footer);
+        add(footer, resize, 24); window.addView(footer);
     }
     private void clamp() {
         Rect bounds = bounds(); int maxWidth = Math.max(dp(200), bounds.width() - dp(16)), maxHeight = Math.max(dp(300), bounds.height() - dp(64));
-        layout.width = Math.max(Math.min(dp(280), maxWidth), Math.min(layout.width, maxWidth));
-        layout.height = Math.max(Math.min(dp(360), maxHeight), Math.min(layout.height, maxHeight));
+        layout.width = Math.max(Math.min(dp(240), maxWidth), Math.min(layout.width, maxWidth));
+        layout.height = Math.max(Math.min(dp(expanded ? 360 : 220), maxHeight), Math.min(layout.height, maxHeight));
         layout.x = Math.max(0, Math.min(layout.x, bounds.width() - layout.width));
         layout.y = Math.max(dp(24), Math.min(layout.y, bounds.height() - layout.height));
     }
@@ -219,8 +226,10 @@ public final class FloatingService extends Service {
     }
     private void toggleSize() {
         expanded = !expanded; Rect bounds = bounds(); layout.x = dp(8); layout.y = dp(32);
-        layout.width = expanded ? bounds.width() - dp(16) : dp(350);
-        layout.height = expanded ? bounds.height() - dp(64) : dp(560);
+        layout.width = expanded ? bounds.width() - dp(16) : dp(260);
+        layout.height = expanded ? bounds.height() - dp(64) : dp(240);
+        pageFrame.setLayoutParams(expanded ? new LinearLayout.LayoutParams(-1, 0, 1) : new LinearLayout.LayoutParams(-1, dp(1)));
+        web.setLayoutParams(new FrameLayout.LayoutParams(-1, expanded ? -1 : dp(360)));
         size.setText(expanded ? "작게" : "크게"); clamp(); applyLayout();
     }
     @SuppressLint("SetJavaScriptEnabled")

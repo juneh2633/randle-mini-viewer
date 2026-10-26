@@ -2,9 +2,9 @@
 
 [랜들](https://randle.lixx.kr/play)의 숫자를 항상 위에 뜨는 작은 창으로 보여 줍니다. 유튜브를 보거나 다른 작업을 할 때 사용할 수 있습니다.
 
-미니 창에서 자리를 선택하고 리롤·확정·다음 판을 직접 누를 수 있습니다. 자동으로 게임을 반복하는 기능은 없습니다.
+PC 미니 창에서 자리를 선택하고 리롤·확정·다음 판을 직접 누를 수 있습니다. PC 확장 프로그램에는 자동 반복 기능이 없습니다.
 
-Android용 작은 창 앱도 시험판으로 제공합니다. 창 안에서 숫자 선택·리롤·확정·다음 판과 웹 화면을 직접 조작할 수 있습니다. [Android APK 다운로드](https://github.com/juneh2633/randle-mini-viewer/releases/tag/android-v0.2.0) · [설치·사용 안내](android/README.md). PC용 확장 프로그램과 별도 앱으로 설치됩니다.
+Android용 작은 창 앱도 시험판으로 제공합니다. 숫자와 필수 버튼을 작은 창에 표시하며 웹 화면은 펼쳐서 조작합니다. 기본은 수동이고 명령을 입력하면 자동 뽑기를 켤 수 있습니다. [Android APK 다운로드](https://github.com/juneh2633/randle-mini-viewer/releases/tag/android-v0.3.0) · [설치·사용 안내](android/README.md). PC용 확장 프로그램과 별도 앱으로 설치됩니다.
 
 ## 다운로드 및 설치
 
