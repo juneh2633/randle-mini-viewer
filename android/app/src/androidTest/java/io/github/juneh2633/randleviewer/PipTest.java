@@ -6,6 +6,9 @@ import android.graphics.Bitmap;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.widget.Button;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -14,6 +17,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -45,7 +50,7 @@ public class PipTest {
             if (result.get()) return;
             Thread.sleep(50);
         }
-        fail("Timed out waiting for activity state");
+        fail("Timed out waiting for activity state. Page: " + evaluate("JSON.stringify({url:location.href,origin:location.origin,ready:document.readyState,reader:typeof RandleViewer})"));
     }
     private String evaluate(String source) throws Exception {
         AtomicReference<String> result = new AtomicReference<>();
@@ -66,7 +71,14 @@ public class PipTest {
                     .append(i + 1).append("</button>");
                 String html = "<meta charset='utf-8'><section aria-label='랜들 숫자 뽑기'><div aria-label='8자리 숫자'>" + cells
                     + "</div><button id='reroll' disabled>선택한 자리 다시 굴리기</button><button onclick=\"window.confirms++\">이 숫자로 확정 (20초 후 자동 확정)</button></section><script>window.confirms=0</script>";
-                web.loadDataWithBaseURL("https://randle.lixx.kr/play", html, "text/html", "UTF-8", null);
+                // Intercept a normal HTTPS navigation so the fixture has exactly
+                // the same URL/origin semantics as the live site, without network.
+                web.setWebViewClient(new WebViewClient() {
+                    @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                        return new WebResourceResponse("text/html", "UTF-8", new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
+                    }
+                });
+                web.loadUrl("https://randle.lixx.kr/play");
             });
             waitFor(() -> button("3") != null && button("3").isEnabled());
             assertEquals("0", evaluate("window.confirms"));
