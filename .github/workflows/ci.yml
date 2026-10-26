@@ -1,0 +1,16 @@
+name: Check viewer
+on:
+  push:
+    branches: ['**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run package

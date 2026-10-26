@@ -1,0 +1,32 @@
+name: Release viewer
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check tag matches the extension version
+        shell: pwsh
+        run: |
+          $version = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and extension version do not match.' }
+          "VIEWER_VERSION=$version" >> $env:GITHUB_ENV
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run package
+      - name: Publish release ZIP and checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $asset = "dist/randle-mini-viewer-$env:VIEWER_VERSION.zip"
+          gh release create $env:GITHUB_REF_NAME $asset "$asset.sha256" --verify-tag --title "랜들 미니 뷰어 $env:VIEWER_VERSION" --notes-file RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation failed.' }
