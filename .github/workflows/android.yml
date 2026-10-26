@@ -34,7 +34,7 @@ jobs:
           disable-animations: true
           script: |
             gradle -p android --no-daemon :app:connectedDebugAndroidTest
-            adb pull /sdcard/Android/data/io.github.juneh2633.randleviewer/files/pip-smoke.png android/app/build/reports/pip-smoke.png
+            adb pull /data/local/tmp/randle-pip-smoke.png android/app/build/reports/pip-smoke.png
       - name: Save APK and lint report
         if: always()
         uses: actions/upload-artifact@v4

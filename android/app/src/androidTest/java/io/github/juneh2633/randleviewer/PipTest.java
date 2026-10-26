@@ -2,7 +2,7 @@ package io.github.juneh2633.randleviewer;
 
 import android.app.Instrumentation;
 import android.content.Intent;
-import android.graphics.Bitmap;
+import android.os.ParcelFileDescriptor;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
@@ -15,8 +15,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
@@ -94,11 +92,13 @@ public class PipTest {
             assertEquals("1", evaluate("window.confirms"));
             Thread.sleep(750);
             assertEquals("1", evaluate("window.confirms"));
-            Bitmap screenshot = instrumentation.getUiAutomation().takeScreenshot();
-            assertNotNull(screenshot);
-            File target = new File(activity.getExternalFilesDir(null), "pip-smoke.png");
-            try (FileOutputStream output = new FileOutputStream(target)) { screenshot.compress(Bitmap.CompressFormat.PNG, 100, output); }
-            screenshot.recycle();
+            // Gradle removes app storage after instrumentation. Preserve the
+            // emulator-only test capture in shell-owned temporary storage.
+            try (ParcelFileDescriptor command = instrumentation.getUiAutomation().executeShellCommand("screencap -p /data/local/tmp/randle-pip-smoke.png");
+                 ParcelFileDescriptor.AutoCloseInputStream output = new ParcelFileDescriptor.AutoCloseInputStream(command)) {
+                byte[] buffer = new byte[1024];
+                while (output.read(buffer) != -1) { /* Wait for screencap to finish. */ }
+            }
         }
     }
 }
