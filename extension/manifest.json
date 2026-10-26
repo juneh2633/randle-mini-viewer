@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "랜들 미니 뷰어",
-  "version": "1.0.0",
-  "description": "랜들에서 공개된 숫자를 다른 화면 위의 미니 창으로 확인합니다. 게임을 자동으로 조작하지 않습니다.",
+  "version": "1.1.0",
+  "description": "랜들 숫자를 미니 창에서 확인하고 자리 선택, 리롤, 확정, 다음 판을 직접 조작합니다. 자동 반복 기능은 없습니다.",
   "content_scripts": [{
     "matches": ["https://randle.lixx.kr/play", "https://randle.lixx.kr/play/*"],
     "js": ["viewer.js", "content.js"],

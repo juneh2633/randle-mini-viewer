@@ -1,8 +1,8 @@
 {
   "name": "randle-mini-viewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Read-only floating number viewer for Randle",
+  "description": "Floating number viewer with manual controls for Randle",
   "engines": {"node": ">=18"},
   "scripts": {
     "test": "node --test tests/*.test.cjs",
