@@ -125,7 +125,7 @@ public final class FloatingService extends Service {
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private Rect bounds() {
-        if (Build.VERSION.SDK_INT >= 30) return manager.getCurrentWindowMetrics().getBounds();
+        if (Build.VERSION.SDK_INT >= 30) return manager.getMaximumWindowMetrics().getBounds();
         return new Rect(0, 0, getResources().getDisplayMetrics().widthPixels, getResources().getDisplayMetrics().heightPixels);
     }
     private Button button(String title) {

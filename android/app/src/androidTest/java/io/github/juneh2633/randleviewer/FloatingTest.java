@@ -1,6 +1,7 @@
 package io.github.juneh2633.randleviewer;
 
 import android.app.Instrumentation;
+import android.content.Intent;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.view.MotionEvent;
@@ -11,7 +12,6 @@ import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.widget.Button;
-import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.json.JSONObject;
@@ -60,9 +60,10 @@ public class FloatingTest {
     }
     @Test public void floatingWindowPreservesPageAndSupportsManualInputAndControls() throws Exception {
         shell("appops set io.github.juneh2633.randleviewer SYSTEM_ALERT_WINDOW allow");
-        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(current -> {
-                activity = current; original = (WebView) find(current.getWindow().getDecorView(), WebView.class, null); original.stopLoading();
+        activity = (MainActivity) instrumentation.startActivitySync(new Intent(instrumentation.getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            instrumentation.runOnMainSync(() -> {
+                original = (WebView) find(activity.getWindow().getDecorView(), WebView.class, null); original.stopLoading();
                 StringBuilder digits = new StringBuilder();
                 for (int i = 0; i < 8; i++) digits.append("<button data-roll-cell aria-label='").append(i + 1).append("번째 자리, 숫자 ").append(i + 1)
                     .append("' aria-pressed='false' onclick=\"this.setAttribute('aria-pressed','true');document.getElementById('reroll').disabled=false\">").append(i + 1).append("</button>");
@@ -86,6 +87,11 @@ public class FloatingTest {
             assertSame(original, FloatingService.instance.web);
             waitFor(() -> button(FloatingService.instance.window, "3").isSelected());
             assertEquals("\"keep\"", evaluate("document.getElementById('answer').value"));
+            int[] originalWidth = new int[1];
+            instrumentation.runOnMainSync(() -> { originalWidth[0] = FloatingService.instance.window.getWidth(); button(FloatingService.instance.window, "크게").performClick(); });
+            waitFor(() -> FloatingService.instance.window.getWidth() > originalWidth[0]);
+            instrumentation.runOnMainSync(() -> button(FloatingService.instance.window, "작게").performClick());
+            waitFor(() -> FloatingService.instance.window.getWidth() <= originalWidth[0]);
             // Touch an HTML input in the service window and type while the
             // originating activity is in the background.
             JSONObject point = new JSONObject((String) new JSONTokener(evaluate("JSON.stringify((()=>{let r=document.getElementById('answer').getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2,d:devicePixelRatio}})())")).nextValue());
@@ -111,7 +117,7 @@ public class FloatingTest {
             waitFor(() -> !FloatingService.isRunning() && original.getParent() != null && find(activity.getWindow().getDecorView(), WebView.class, null) == original);
             assertTrue(evaluate("document.getElementById('answer').value").contains("7"));
         } finally {
-            instrumentation.runOnMainSync(() -> { if (FloatingService.instance != null) FloatingService.instance.stopSelf(); });
+            instrumentation.runOnMainSync(() -> { if (FloatingService.instance != null) FloatingService.instance.stopSelf(); activity.finish(); });
         }
     }
 }
