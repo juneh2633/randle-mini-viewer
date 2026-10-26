@@ -36,6 +36,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.core.content.ContextCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -91,8 +92,7 @@ public class MainActivity extends Activity {
         }
         buildLayout();
         configureWebView();
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, new IntentFilter(CONTROL), Context.RECEIVER_NOT_EXPORTED);
-        else registerReceiver(receiver, new IntentFilter(CONTROL));
+        ContextCompat.registerReceiver(this, receiver, new IntentFilter(CONTROL), ContextCompat.RECEIVER_NOT_EXPORTED);
         if (saved == null || web.restoreState(saved) == null) web.loadUrl(HOME);
     }
 
